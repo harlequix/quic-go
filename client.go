@@ -47,6 +47,10 @@ var (
 	generateConnectionIDForInitial = protocol.GenerateConnectionIDForInitial
 )
 
+func GenConnectionID(cid []byte) protocol.ConnectionID{
+    return protocol.ConnectionID(cid)
+}
+
 // DialAddr establishes a new QUIC connection to a server.
 // It uses a new UDP connection and closes this connection when the QUIC session is closed.
 // The hostname for SNI is taken from the given address.
@@ -55,8 +59,9 @@ func DialAddr(
 	addr string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (Session, error) {
-	return DialAddrContext(context.Background(), addr, tlsConf, config)
+	return DialAddrContext(context.Background(), addr, tlsConf, config, id)
 }
 
 // DialAddrEarly establishes a new 0-RTT QUIC connection to a server.
@@ -67,8 +72,9 @@ func DialAddrEarly(
 	addr string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (EarlySession, error) {
-	return DialAddrEarlyContext(context.Background(), addr, tlsConf, config)
+	return DialAddrEarlyContext(context.Background(), addr, tlsConf, config, id)
 }
 
 // DialAddrEarlyContext establishes a new 0-RTT QUIC connection to a server using provided context.
@@ -78,8 +84,9 @@ func DialAddrEarlyContext(
 	addr string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (EarlySession, error) {
-	sess, err := dialAddrContext(ctx, addr, tlsConf, config, true)
+	sess, err := dialAddrContext(ctx, addr, tlsConf, config, true, id)
 	if err != nil {
 		return nil, err
 	}
@@ -94,8 +101,9 @@ func DialAddrContext(
 	addr string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (Session, error) {
-	return dialAddrContext(ctx, addr, tlsConf, config, false)
+	return dialAddrContext(ctx, addr, tlsConf, config, false, id)
 }
 
 func dialAddrContext(
@@ -104,6 +112,7 @@ func dialAddrContext(
 	tlsConf *tls.Config,
 	config *Config,
 	use0RTT bool,
+    id protocol.ConnectionID,
 ) (quicSession, error) {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -113,7 +122,7 @@ func dialAddrContext(
 	if err != nil {
 		return nil, err
 	}
-	return dialContext(ctx, udpConn, udpAddr, addr, tlsConf, config, use0RTT, true)
+	return dialContext(ctx, udpConn, udpAddr, addr, tlsConf, config, use0RTT, true, id)
 }
 
 // Dial establishes a new QUIC connection to a server using a net.PacketConn.
@@ -129,8 +138,9 @@ func Dial(
 	host string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (Session, error) {
-	return dialContext(context.Background(), pconn, remoteAddr, host, tlsConf, config, false, false)
+	return dialContext(context.Background(), pconn, remoteAddr, host, tlsConf, config, false, false, id)
 }
 
 // DialEarly establishes a new 0-RTT QUIC connection to a server using a net.PacketConn.
@@ -144,8 +154,9 @@ func DialEarly(
 	host string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (EarlySession, error) {
-	return DialEarlyContext(context.Background(), pconn, remoteAddr, host, tlsConf, config)
+	return DialEarlyContext(context.Background(), pconn, remoteAddr, host, tlsConf, config, id)
 }
 
 // DialEarlyContext establishes a new 0-RTT QUIC connection to a server using a net.PacketConn using the provided context.
@@ -157,8 +168,9 @@ func DialEarlyContext(
 	host string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (EarlySession, error) {
-	return dialContext(ctx, pconn, remoteAddr, host, tlsConf, config, true, false)
+	return dialContext(ctx, pconn, remoteAddr, host, tlsConf, config, true, false, id)
 }
 
 // DialContext establishes a new QUIC connection to a server using a net.PacketConn using the provided context.
@@ -170,8 +182,9 @@ func DialContext(
 	host string,
 	tlsConf *tls.Config,
 	config *Config,
+    id protocol.ConnectionID,
 ) (Session, error) {
-	return dialContext(ctx, pconn, remoteAddr, host, tlsConf, config, false, false)
+	return dialContext(ctx, pconn, remoteAddr, host, tlsConf, config, false, false, id)
 }
 
 func dialContext(
@@ -183,6 +196,7 @@ func dialContext(
 	config *Config,
 	use0RTT bool,
 	createdPacketConn bool,
+    id protocol.ConnectionID,
 ) (quicSession, error) {
 	if tlsConf == nil {
 		return nil, errors.New("quic: tls.Config not set")
@@ -195,7 +209,7 @@ func dialContext(
 	if err != nil {
 		return nil, err
 	}
-	c, err := newClient(pconn, remoteAddr, config, tlsConf, host, use0RTT, createdPacketConn)
+	c, err := newClient(pconn, remoteAddr, config, tlsConf, host, use0RTT, createdPacketConn, id)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +224,20 @@ func dialContext(
 	return c.session, nil
 }
 
+func NewClient(
+	pconn net.PacketConn,
+	remoteAddr net.Addr,
+	config *Config,
+	tlsConf *tls.Config,
+	host string,
+	use0RTT bool,
+	createdPacketConn bool,
+    id protocol.ConnectionID,
+) (*client, error){
+    return newClient(pconn, remoteAddr, config, tlsConf, host, use0RTT, createdPacketConn, id)
+}
+
+
 func newClient(
 	pconn net.PacketConn,
 	remoteAddr net.Addr,
@@ -218,6 +246,7 @@ func newClient(
 	host string,
 	use0RTT bool,
 	createdPacketConn bool,
+    id protocol.ConnectionID,
 ) (*client, error) {
 	if tlsConf == nil {
 		tlsConf = &tls.Config{}
@@ -248,10 +277,20 @@ func newClient(
 	if err != nil {
 		return nil, err
 	}
-	destConnID, err := generateConnectionIDForInitial()
-	if err != nil {
-		return nil, err
-	}
+    if id != nil {
+        srcConnID = id
+    }
+
+
+    destConnID, err := generateConnectionIDForInitial()
+    if err != nil {
+        return nil, err
+    }
+
+    if id != nil {
+        destConnID = id
+    }
+    fmt.Println(destConnID)
 	c := &client{
 		srcConnID:         srcConnID,
 		destConnID:        destConnID,
@@ -265,6 +304,13 @@ func newClient(
 		logger:            utils.DefaultLogger.WithPrefix("client"),
 	}
 	return c, nil
+}
+
+func (c *client) setSrcConnID (connID protocol.ConnectionID) {
+    c.srcConnID = connID
+}
+func (c *client) Dial(ctx context.Context) error {
+    return c.dial(ctx)
 }
 
 func (c *client) dial(ctx context.Context) error {
