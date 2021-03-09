@@ -290,7 +290,6 @@ func newClient(
     if id != nil {
         destConnID = id
     }
-    fmt.Println(destConnID)
 	c := &client{
 		srcConnID:         srcConnID,
 		destConnID:        destConnID,
